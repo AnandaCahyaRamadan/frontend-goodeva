@@ -1,15 +1,17 @@
-import React, { useState } from 'react';
+// src/App.tsx
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
-const API_URL = 'http://localhost:3000/api/todos';
+const API_URL = 'http://localhost:3001/api/todos';
 
-export enum TodoStatus {
-  CREATED = 'created',
-  COMPLETED = 'completed',
-  ON_GOING = 'on_going',
-  PROBLEM = 'problem',
-}
+export const TodoStatus = {
+  CREATED: 'created' as const,
+  COMPLETED: 'completed' as const,
+  ON_GOING: 'on_going' as const,
+  PROBLEM: 'problem' as const,
+};
+export type TodoStatus = typeof TodoStatus[keyof typeof TodoStatus];
 
 interface Todo {
   id: number;
@@ -25,10 +27,9 @@ export default function App() {
   const [newTodo, setNewTodo] = useState('');
   const [search, setSearch] = useState('');
   const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null);
-  const [isAdding, setIsAdding] = useState(false); // loading tombol add
 
-  // === QUERY ===
-  const { data: todos, isLoading, isError, error, isFetching } = useQuery<Todo[], Error>({
+  // --- QUERY TODOS ---
+  const { data: todos, isLoading, isError, error } = useQuery<Todo[], Error>({
     queryKey: ['todos'],
     queryFn: async () => {
       const res = await fetch(API_URL);
@@ -37,7 +38,7 @@ export default function App() {
     },
   });
 
-  // === ADD MUTATION ===
+  // --- ADD MUTATION ---
   const addMutation = useMutation<Todo, Error, string>({
     mutationFn: async (title: string) => {
       const res = await fetch(API_URL, {
@@ -49,21 +50,18 @@ export default function App() {
       return res.json();
     },
     onSuccess: (newTodo) => {
-      queryClient.setQueryData<Todo[]>(['todos'], (oldTodos = []) => [...oldTodos, newTodo]);
-    },
-    onSettled: () => {
-      setIsAdding(false);
-    },
-    onError: () => {
-      setIsAdding(false);
+      queryClient.setQueryData<Todo[]>(['todos'], (old = []) => [...old, newTodo]);
     },
   });
 
-  // === UPDATE STATUS MUTATION (optimistic update) ===
+  const isAdding = addMutation.status === 'pending'; // <-- perbaikan
+
+  // --- UPDATE STATUS MUTATION ---
   const updateMutation = useMutation<
     Todo,
     Error,
-    { id: number; status: TodoStatus }
+    { id: number; status: TodoStatus },
+    { previousTodos?: Todo[] }
   >({
     mutationFn: async ({ id, status }) => {
       const res = await fetch(`${API_URL}/${id}`, {
@@ -82,9 +80,9 @@ export default function App() {
       );
       return { previousTodos };
     },
-    onError: (err, variables, context) => {
+    onError: (_err, _variables, context) => {
       if (context?.previousTodos) {
-        queryClient.setQueryData({ queryKey: ['todos'] }, context.previousTodos);
+        queryClient.setQueryData<Todo[]>(['todos'], context.previousTodos);
       }
     },
     onSettled: () => {
@@ -92,10 +90,11 @@ export default function App() {
     },
   });
 
-  // === HANDLERS ===
+  const isUpdating = updateMutation.status === 'pending'; // <-- perbaikan
+
+  // --- HANDLERS ---
   const handleAdd = () => {
     if (!newTodo.trim()) return;
-    setIsAdding(true);
     addMutation.mutate(newTodo);
     setNewTodo('');
   };
@@ -121,7 +120,7 @@ export default function App() {
 
   return (
     <div className="container py-4">
-      <h1 className="mb-4">Todo App</h1>
+      <h1 className="mb-4">Todo App (Dropdown + TS + React Query v4)</h1>
 
       {/* Add Todo */}
       <div className="input-group mb-3">
@@ -140,6 +139,7 @@ export default function App() {
           {isAdding ? 'Adding...' : 'Add'}
         </button>
       </div>
+
       {addMutation.isError && (
         <div className="text-danger mb-3">Error adding todo</div>
       )}
@@ -156,7 +156,7 @@ export default function App() {
       </div>
 
       {/* Todo Table */}
-      {isLoading || isFetching ? (
+      {isLoading ? (
         <div className="alert alert-info">Loading todos...</div>
       ) : isError ? (
         <div className="alert alert-danger">Error: {error?.message}</div>
@@ -185,9 +185,12 @@ export default function App() {
                     className="form-select form-select-sm w-auto d-inline me-2"
                     value={todo.status}
                     onChange={(e) =>
-                      updateMutation.mutate({ id: todo.id, status: e.target.value as TodoStatus })
+                      updateMutation.mutate({
+                        id: todo.id,
+                        status: e.target.value as TodoStatus,
+                      })
                     }
-                    disabled={updateMutation.isLoading}
+                    disabled={isUpdating}
                   >
                     {Object.values(TodoStatus).map((status) => (
                       <option key={status} value={status}>
@@ -227,10 +230,20 @@ export default function App() {
                   ></button>
                 </div>
                 <div className="modal-body">
-                  <p><strong>Title:</strong> {selectedTodo.title}</p>
-                  <p><strong>Status:</strong> {selectedTodo.status}</p>
-                  <p><strong>Problem Desc:</strong> {selectedTodo.problem_desc || '-'}</p>
-                  <p><strong>Created At:</strong> {new Date(selectedTodo.created_at).toLocaleString()}</p>
+                  <p>
+                    <strong>Title:</strong> {selectedTodo.title}
+                  </p>
+                  <p>
+                    <strong>Status:</strong> {selectedTodo.status}
+                  </p>
+                  <p>
+                    <strong>Problem Desc:</strong>{' '}
+                    {selectedTodo.problem_desc || '-'}
+                  </p>
+                  <p>
+                    <strong>Created At:</strong>{' '}
+                    {new Date(selectedTodo.created_at).toLocaleString()}
+                  </p>
                 </div>
                 <div className="modal-footer">
                   <button
