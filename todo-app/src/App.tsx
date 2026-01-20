@@ -121,7 +121,7 @@ export default function App() {
 
   return (
     <div className="container py-4">
-      <h1 className="mb-4">Todo App (Dropdown Status + React Query + TS)</h1>
+      <h1 className="mb-4">Todo App</h1>
 
       {/* Add Todo */}
       <div className="input-group mb-3">
